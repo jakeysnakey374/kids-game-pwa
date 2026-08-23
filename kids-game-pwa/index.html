@@ -734,16 +734,27 @@ function buildMSBoard(){
   board.style.gridTemplateColumns=`repeat(${msCols},${cs}px)`;
   for(let r=0;r<msRows;r++)for(let c=0;c<msCols;c++){
     const cell=document.createElement('button');cell.className='ms-cell hidden';cell.style.cssText=`width:${cs}px;height:${cs}px;font-size:${fs}px;`;cell.dataset.r=r;cell.dataset.c=c;
-    let pressTimer=null,pressFlagged=false,tsx=0,tsy=0,moved=false;
+    let pressTimer=null,flaggedThisPress=false,tsx=0,tsy=0,moved=false;
+    // Some browsers (notably iOS Safari) still fire a native long-press
+    // 'contextmenu' event on their own timer even after touchstart calls
+    // preventDefault(). That's independent of our own long-press timer
+    // below, so whichever of the two fires first must cancel/guard the
+    // other - otherwise a long-enough hold flags it, then un-flags it
+    // again when the second one fires.
     cell.addEventListener('contextmenu',e=>{
       e.preventDefault();
-      if(pressFlagged){pressFlagged=false;return;} // already handled by touch long-press
-      msFlag(r,c);
+      if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
+      if(flaggedThisPress)return;
+      flaggedThisPress=true;msFlag(r,c);
     });
     cell.addEventListener('touchstart',e=>{
       e.preventDefault();
-      tsx=e.touches[0].clientX;tsy=e.touches[0].clientY;pressFlagged=false;moved=false;
-      pressTimer=setTimeout(()=>{msFlag(r,c);pressFlagged=true;pressTimer=null;},500);
+      tsx=e.touches[0].clientX;tsy=e.touches[0].clientY;flaggedThisPress=false;moved=false;
+      pressTimer=setTimeout(()=>{
+        pressTimer=null;
+        if(flaggedThisPress)return;
+        flaggedThisPress=true;msFlag(r,c);
+      },500);
     },{passive:false});
     cell.addEventListener('touchmove',e=>{
       if(!pressTimer)return;
@@ -753,7 +764,7 @@ function buildMSBoard(){
     cell.addEventListener('touchend',e=>{
       e.preventDefault();
       if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
-      if(pressFlagged)return; // long-press already flagged it, don't also reveal
+      if(flaggedThisPress)return; // long-press already flagged it, don't also reveal
       if(!moved)msReveal(r,c);
     });
     cell.addEventListener('click',()=>msReveal(r,c));
